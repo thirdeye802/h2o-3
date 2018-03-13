@@ -113,8 +113,9 @@ public class AstMerge extends AstPrimitive {
         if (lv.get_type() != rv.get_type())
           throw new IllegalArgumentException("Merging columns must be the same type, column " + l._names[ncols] +
               " found types " + lv.get_type_str() + " and " + rv.get_type_str());
-        if (lv.isString())
-          throw new IllegalArgumentException("Cannot merge Strings; flip toCategoricalVec first");
+        if (method.equals("hash") && lv.isString())
+          throw new IllegalArgumentException("Cannot merge Strings with hash method; flip toCategoricalVec first" +
+                  " or set your method to auto or radix");
     }
 
     // GC now to sync nodes and get them to use young gen for the working memory. This helps get stable
@@ -128,7 +129,7 @@ public class AstMerge extends AstPrimitive {
       }
     }.doAllNodes();
 
-    if (method.equals("radix") || method.equals("auto")) {
+    if (method.equals("radix") || method.equals("auto")) {  // default to radix as default merge metho
       // Build categorical mappings, to rapidly convert categoricals from the left to the right
       // With the sortingMerge approach there is no variance here: always map left to right
       if (allLeft && allRite)
@@ -139,10 +140,10 @@ public class AstMerge extends AstPrimitive {
       for (int i = 0; i < ncols; i++) { // flip the frame orders for allRite
         Vec lv = onlyLeftAllOff ? l.vec(i) : r.vec(i);
         Vec rv = onlyLeftAllOff ? r.vec(i) : l.vec(i);
-        if (rv.isString()) {
+/*        if (rv.isString()) {
           throw new IllegalArgumentException("Your right/y frame contains String columns.  Flip toCategoricalVec" +
                   " first or choose the hash method instead.");
-        }
+        }*/
         if (onlyLeftAllOff ? lv.isCategorical() : rv.isCategorical()) {
           assert onlyLeftAllOff ? rv.isCategorical() : lv.isCategorical();  // if not, would have thrown above
           id_maps[i] = onlyLeftAllOff ? CategoricalWrappedVec.computeMap(lv.domain(), rv.domain()) : CategoricalWrappedVec.computeMap(rv.domain(), lv.domain());

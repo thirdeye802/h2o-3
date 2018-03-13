@@ -498,7 +498,6 @@ class BinaryMerge extends DTask<BinaryMerge> {
     assert lastSize > 0;
     final int numLeftCols = _leftSB._frame.numCols();
     final int numColsInResult = _leftSB._frame.numCols() + _riteSB._frame.numCols() - _numJoinCols;
-    int numStrCols = countStrCols(_leftSB._frame) + countStrCols(_riteSB._frame);
     final double[][][] frameLikeChunks = new double[numColsInResult][nbatch][]; //TODO: compression via int types
     String[][][] frameLikeChunks4Strings = new String[numColsInResult][nbatch][]; // cannot allocate before hand
     _chunkSizes = new int[nbatch];
@@ -527,14 +526,6 @@ class BinaryMerge extends DTask<BinaryMerge> {
     _timings[11] += (System.nanoTime() - t0) / 1e9;
   }
 
-  private int countStrCols(Frame fr) {
-    int numStrCols = 0;
-    if (fr != null && fr.numCols() > 0) {
-      for (int cInd = 0; cInd < fr.numCols(); cInd++)
-        numStrCols += fr.vec(cInd).isString() ? 1 : 0;
-    }
-    return numStrCols;
-  }
   // Loop over _ret1st and _retLen and populate the batched requests for
   // each node helper.  _ret1st and _retLen are the same shape
   private void chunksPopulatePerNode( final long perNodeLeftLoc[], final long perNodeLeftRows[][][], final long perNodeRightLoc[], final long perNodeRightRows[][][] ) {
@@ -665,7 +656,6 @@ class BinaryMerge extends DTask<BinaryMerge> {
           for (int col=0; col<chks.length; col++) { // copy over left frame to frameLikeChunks
             if (chksString[col][o] != null) {
               frameLikeChunks4String[col][whichChunk][offset] = new String(chksString[col][o]);
-              chksString[col][o] = null;  // free memory right away
             } else
               frameLikeChunks[col][whichChunk][offset] = chks[col][o];  // colForBatch.atd(row);
           }
@@ -683,7 +673,12 @@ class BinaryMerge extends DTask<BinaryMerge> {
             int fromChunk = (int) ((resultLoc - l) / batchSizeUUID);
             int fromOffset = (int) ((resultLoc - l) % batchSizeUUID);
             for (int col=0; col<numColsInResult-numLeftCols; col++) {
-              frameLikeChunks[numLeftCols + col][toChunk][toOffset] = frameLikeChunks[numLeftCols + col][fromChunk][fromOffset];
+              if (frameLikeChunks4String[numLeftCols + col][toChunk] != null) {
+                frameLikeChunks4String[numLeftCols + col][toChunk][toOffset] = frameLikeChunks4String[numLeftCols + col][fromChunk][fromOffset]==null?null:
+                        new String(frameLikeChunks4String[numLeftCols + col][fromChunk][fromOffset]);
+              } else {
+                frameLikeChunks[numLeftCols + col][toChunk][toOffset] = frameLikeChunks[numLeftCols + col][fromChunk][fromOffset];
+              }
             }
             resultLoc++;
           }
@@ -730,7 +725,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
           NewChunk nc = new NewChunk(null, 0);
           for (int index=0; index<frameLikeChunks4String[col][b].length; index++)
             nc.addStr(frameLikeChunks4String[col][b][index]);
-          CStrChunk ck = (CStrChunk) nc.compress();
+          Chunk ck = nc.compress();
           DKV.put(getKeyForMSBComboPerCol(_leftSB._msb, _riteSB._msb, col, b), ck, fs, true);
           frameLikeChunks4String[col][b] = null; //free mem as early as possible (it's now in the store)
         } else {
@@ -786,7 +781,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
         for (int i=0; i<c.length; i++) c[i] = v.chunkKey(i).home() ? v.chunkForChunkIdx(i) : null;  // grab a chunk here
         if (v.isString()) {
           for (int row = 0; row < _rows.length; row++) {  // copy string and numeric columns
-            _chkString[col][row] = new String(c[cidx[row]].stringAt(offset[row]));
+              _chkString[col][row] = c[cidx[row]].isNA(offset[row])?null:new String(c[cidx[row]].stringAt(offset[row]));
           }
         } else {
           for (int row = 0; row < _rows.length; row++) {  // extract info from chunks to one place

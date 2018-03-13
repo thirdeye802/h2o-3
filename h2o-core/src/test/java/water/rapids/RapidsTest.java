@@ -368,7 +368,74 @@ public class RapidsTest extends TestUtil {
     }
   }
 
+  @Test public void testMergeWithInts() {
+    Scope.enter();
+    Frame f1=null, f2=null, mergeRes=null, ans=null;
 
+    try {
+      f1 = parse_test_file("smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f1_num_small.csv");
+      f2 = parse_test_file("smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f2_num_small.csv");
+      ans = parse_test_file("smalldata/jira/PUBDEV_5266_merge_strings/mergedf1_f2_num_small.csv");
+      Scope.track(f1);
+      Scope.track(f2);
+      Scope.track(ans);
+      String[] mergedNames = new String[]{"int1","stringf1","stringf1.2","intf1.2","stringf2","stringf2.2",
+              "stringf2.3","intf2.5", "intf2.3","intf2.4","stringf2.4"};
+
+      String x = String.format("(merge %s %s 0 0 [0] [0] \"radix\")", f1._key, f2._key);
+      Val res = Rapids.exec(x);
+      mergeRes = res.getFrame();
+      Scope.track(mergeRes);
+      assertTrue(isBitIdentical(ans, mergeRes)); // compare our merge frame with answer from R
+    } finally {
+      Scope.exit();
+    }
+  }
+
+  @Test public void testMergeWithStrings() {
+    String f1 = "smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f1_small.csv";
+    String f2 = "smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f2_small.csv";
+    String ansName = "smalldata/jira/PUBDEV_5266_merge_strings/mergedf1_f2_small.csv";
+    String rapidString = "(merge %s %s 0 0 [0] [0] \"radix\")";
+    testMergeStringOneSetting(f1, f2, ansName, rapidString);  // test merge right
+
+    f1 = "smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f1_small_NAs.csv";
+    f2 = "smalldata/jira/PUBDEV_5266_merge_strings/PUBDEV_5266_f2_small_NAs.csv";
+    ansName = "smalldata/jira/PUBDEV_5266_merge_strings/mergedf1_f2_R_y_T_small_NAs.csv";
+    rapidString = "(merge %s %s 0 0 [0] [0] \"radix\")";
+    testMergeStringOneSetting(f1, f2, ansName, rapidString);  // test merge left with NAs in string columns
+
+  }
+
+  private void testMergeStringOneSetting(String f1Name, String f2Name, String ansName, String rapidString) {
+    Scope.enter();
+    Frame f1=null, f2=null, mergeRes=null, ans=null;
+
+    try {
+      f1 = parse_test_file(f1Name);
+      f1.setNames(new String[]{"int1", "stringf1", "stringf1-2", "intf1-2"});
+      f2 = parse_test_file(f2Name);
+      f2.setNames(new String[]{"int1", "stringf2", "stringf2-2", "stringf2-3", "intf2-5", "intf2-3", "intf2-4", "stringf2-4"});
+      ans = parse_test_file(ansName);
+      int[] stringCols = new int[]{1,2,4,5,6,10};
+      for (int col=0; col < stringCols.length; col++) // change enum column back to string columns
+        ans.replace(stringCols[col], ans.vec(stringCols[col]).toStringVec()).remove();
+      Scope.track(f1);
+      Scope.track(f2);
+      Scope.track(ans);
+      String[] mergedNames = new String[]{"int1","stringf1","stringf1.2","intf1.2","stringf2","stringf2.2",
+              "stringf2.3","intf2.5", "intf2.3","intf2.4","stringf2.4"};
+
+      String x = String.format(rapidString, f1._key, f2._key);
+      Val res = Rapids.exec(x);
+      mergeRes = res.getFrame();
+      Scope.track(mergeRes);
+      assertTrue(isBitIdentical(ans, mergeRes)); // compare our merge frame with answer from R
+    } finally {
+      Scope.exit();
+    }
+
+  }
   @Test public void testQuantile() {
     Frame f = null;
     try {
