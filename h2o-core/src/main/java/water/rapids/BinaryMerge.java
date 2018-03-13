@@ -29,6 +29,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
   private transient int _retBatchSize;
 
   private final boolean _allLeft, _allRight;
+  private boolean[] _stringCols;
 
   // does any left row match to more than 1 right row?  If not, can allocate
   // and loop more efficiently, and mark the resulting key'd frame with a
@@ -86,6 +87,24 @@ class BinaryMerge extends DTask<BinaryMerge> {
     _numJoinCols = Math.min(_leftSB._fieldSizes.length, _riteSB._fieldSizes.length);
     _allLeft = allLeft;
     _allRight = false;  // TODO: pass through
+    int columnsInResult = (_leftSB._frame == null?0:_leftSB._frame.numCols()) +
+            (_riteSB._frame == null?0:_riteSB._frame.numCols())-_numJoinCols;
+    _stringCols = new boolean[columnsInResult];
+    // check left frame first
+    if (_leftSB._frame!=null) {
+      for (int col = _numJoinCols; col < _leftSB._frame.numCols(); col++) {
+        if (_leftSB._frame.vec(col).isString())
+          _stringCols[col] = true;
+      }
+    }
+    // check right frame next
+    if (_riteSB._frame != null) {
+      int colOffset = _leftSB._frame==null?0:_leftSB._frame.numCols()-_numJoinCols;
+      for (int col = _numJoinCols; col < _riteSB._frame.numCols(); col++) {
+        if (_riteSB._frame.vec(col).isString())
+          _stringCols[col + colOffset] = true;
+      }
+    }
   }
 
 
@@ -654,7 +673,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
           int offset = (int) (a % batchSizeUUID);
 
           for (int col=0; col<chks.length; col++) { // copy over left frame to frameLikeChunks
-            if (chksString[col][o] != null) {
+            if (this._stringCols[col]) {
               frameLikeChunks4String[col][whichChunk][offset] = new String(chksString[col][o]);
             } else
               frameLikeChunks[col][whichChunk][offset] = chks[col][o];  // colForBatch.atd(row);
@@ -673,11 +692,12 @@ class BinaryMerge extends DTask<BinaryMerge> {
             int fromChunk = (int) ((resultLoc - l) / batchSizeUUID);
             int fromOffset = (int) ((resultLoc - l) % batchSizeUUID);
             for (int col=0; col<numColsInResult-numLeftCols; col++) {
-              if (frameLikeChunks4String[numLeftCols + col][toChunk] != null) {
-                frameLikeChunks4String[numLeftCols + col][toChunk][toOffset] = frameLikeChunks4String[numLeftCols + col][fromChunk][fromOffset]==null?null:
-                        new String(frameLikeChunks4String[numLeftCols + col][fromChunk][fromOffset]);
+              int colIndex = numLeftCols + col;
+              if (this._stringCols[colIndex]) {
+                frameLikeChunks4String[colIndex][toChunk][toOffset] = frameLikeChunks4String[colIndex][fromChunk][fromOffset]==null?null:
+                        new String(frameLikeChunks4String[colIndex][fromChunk][fromOffset]);
               } else {
-                frameLikeChunks[numLeftCols + col][toChunk][toOffset] = frameLikeChunks[numLeftCols + col][fromChunk][fromOffset];
+                frameLikeChunks[colIndex][toChunk][toOffset] = frameLikeChunks[colIndex][fromChunk][fromOffset];
               }
             }
             resultLoc++;
@@ -703,11 +723,12 @@ class BinaryMerge extends DTask<BinaryMerge> {
           o = (int)(pnl % batchSizeUUID);
           for (int col=0; col<numColsInResult-numLeftCols; col++) {
             // TODO: this only works for numeric columns (not for UUID, strings, etc.)
-            if (chksString[_numJoinCols+col][o] != null) {
-              frameLikeChunks4String[numLeftCols + col][whichChunk][offset] = new String(chksString[_numJoinCols + col][o]);  // colForBatch.atd(row);
+            int colIndex = numLeftCols + col;
+            if (this._stringCols[colIndex]) {
+              frameLikeChunks4String[colIndex][whichChunk][offset] = new String(chksString[_numJoinCols + col][o]);  // colForBatch.atd(row);
               chksString[_numJoinCols + col][o] = null; // free memory
             } else
-              frameLikeChunks[numLeftCols + col][whichChunk][offset] = chks[_numJoinCols + col][o];  // colForBatch.atd(row);
+              frameLikeChunks[colIndex][whichChunk][offset] = chks[_numJoinCols + col][o];  // colForBatch.atd(row);
           }
           resultLoc++;
         }
@@ -721,7 +742,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
     Futures fs = new Futures();
     for (int col=0; col<numColsInResult; col++) {
       for (int b = 0; b < nbatch; b++) {
-        if (frameLikeChunks4String[col][b][0] != null) {
+        if (this._stringCols[col]) {
           NewChunk nc = new NewChunk(null, 0);
           for (int index=0; index<frameLikeChunks4String[col][b].length; index++)
             nc.addStr(frameLikeChunks4String[col][b][index]);
