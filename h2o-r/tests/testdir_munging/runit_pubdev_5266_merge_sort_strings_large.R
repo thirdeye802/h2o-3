@@ -24,8 +24,8 @@ test.merge <- function() {
   yvals <-c(F,F,F,F)
   
   testIndexA <- sample(c(1:length(cnames1))) # choose one test to run
- # testIndex <- testIndexA[1]
-  testIndex <- 4
+  testIndex <- testIndexA[1]
+
   if (testIndex > 1) { # test merge
     f1 <- h2o.importFile(locate(f1names[testIndex])) # c1:int, c2:real, c3:string, c4:enum
     colnames(f1) <- f1colnames[[testIndex]]
