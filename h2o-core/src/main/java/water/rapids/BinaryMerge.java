@@ -521,13 +521,31 @@ class BinaryMerge extends DTask<BinaryMerge> {
     String[][][] frameLikeChunks4Strings = new String[numColsInResult][nbatch][]; // cannot allocate before hand
     _chunkSizes = new int[nbatch];
 
-    for( int col=0; col<numColsInResult; col++ )
-      for( int b = 0; b < nbatch; b++ ) {
-        frameLikeChunks[col][b] = MemoryManager.malloc8d(_chunkSizes[b] = (b==nbatch-1 ? lastSize : batchSizeUUID));
-        Arrays.fill(frameLikeChunks[col][b], Double.NaN);
-        // NA by default to save filling with NA for nomatches when allLeft
-        frameLikeChunks4Strings[col][b] = new String[_chunkSizes[b] = (b==nbatch-1 ? lastSize : batchSizeUUID)];
+    for (int col = 0; col < numColsInResult; col++) {
+      if (this._stringCols[col]) {
+        for (int b = 0; b < nbatch; b++) {
+          frameLikeChunks4Strings[col][b] = new String[_chunkSizes[b] = (b == nbatch - 1 ? lastSize : batchSizeUUID)];
+        }
+      } else {
+        for (int b = 0; b < nbatch; b++) {
+          frameLikeChunks[col][b] = MemoryManager.malloc8d(_chunkSizes[b] = (b == nbatch - 1 ? lastSize : batchSizeUUID));
+          Arrays.fill(frameLikeChunks[col][b], Double.NaN);
+          // NA by default to save filling with NA for nomatches when allLeft
+        }
       }
+    }
+
+/*    for( int col=0; col<numColsInResult; col++ ) {
+      for (int b = 0; b < nbatch; b++) {
+        if (this._stringCols[col]) {
+          frameLikeChunks4Strings[col][b] = new String[_chunkSizes[b] = (b == nbatch - 1 ? lastSize : batchSizeUUID)];
+        } else {
+          frameLikeChunks[col][b] = MemoryManager.malloc8d(_chunkSizes[b] = (b == nbatch - 1 ? lastSize : batchSizeUUID));
+          Arrays.fill(frameLikeChunks[col][b], Double.NaN);
+          // NA by default to save filling with NA for nomatches when allLeft
+        }
+      }
+    }*/
     _timings[4] += ((t1=System.nanoTime()) - t0) / 1e9; t0=t1;
 
     // Get Raw Remote Rows
@@ -674,7 +692,8 @@ class BinaryMerge extends DTask<BinaryMerge> {
 
           for (int col=0; col<chks.length; col++) { // copy over left frame to frameLikeChunks
             if (this._stringCols[col]) {
-              frameLikeChunks4String[col][whichChunk][offset] = new String(chksString[col][o]);
+              if (chksString[col][o] != null)
+                frameLikeChunks4String[col][whichChunk][offset] = new String(chksString[col][o]);
             } else
               frameLikeChunks[col][whichChunk][offset] = chks[col][o];  // colForBatch.atd(row);
           }
@@ -725,8 +744,8 @@ class BinaryMerge extends DTask<BinaryMerge> {
             // TODO: this only works for numeric columns (not for UUID, strings, etc.)
             int colIndex = numLeftCols + col;
             if (this._stringCols[colIndex]) {
-              frameLikeChunks4String[colIndex][whichChunk][offset] = new String(chksString[_numJoinCols + col][o]);  // colForBatch.atd(row);
-              chksString[_numJoinCols + col][o] = null; // free memory
+              if (chksString[_numJoinCols + col][o]!=null)
+                frameLikeChunks4String[colIndex][whichChunk][offset] = new String(chksString[_numJoinCols + col][o]);  // colForBatch.atd(row);
             } else
               frameLikeChunks[colIndex][whichChunk][offset] = chks[_numJoinCols + col][o];  // colForBatch.atd(row);
           }
@@ -740,16 +759,18 @@ class BinaryMerge extends DTask<BinaryMerge> {
   private void chunksCompressAndStore(final int nbatch, final int numColsInResult, final double[][][] frameLikeChunks, String[][][] frameLikeChunks4String) {
     // compress all chunks and store them
     Futures fs = new Futures();
-    for (int col=0; col<numColsInResult; col++) {
-      for (int b = 0; b < nbatch; b++) {
-        if (this._stringCols[col]) {
+    for (int col = 0; col < numColsInResult; col++) {
+      if (this._stringCols[col]) {
+        for (int b = 0; b < nbatch; b++) {
           NewChunk nc = new NewChunk(null, 0);
-          for (int index=0; index<frameLikeChunks4String[col][b].length; index++)
+          for (int index = 0; index < frameLikeChunks4String[col][b].length; index++)
             nc.addStr(frameLikeChunks4String[col][b][index]);
           Chunk ck = nc.compress();
           DKV.put(getKeyForMSBComboPerCol(_leftSB._msb, _riteSB._msb, col, b), ck, fs, true);
           frameLikeChunks4String[col][b] = null; //free mem as early as possible (it's now in the store)
-        } else {
+        }
+      } else {
+        for (int b = 0; b < nbatch; b++) {
           Chunk ck = new NewChunk(frameLikeChunks[col][b]).compress();
           DKV.put(getKeyForMSBComboPerCol(_leftSB._msb, _riteSB._msb, col, b), ck, fs, true);
           frameLikeChunks[col][b] = null; //free mem as early as possible (it's now in the store)
