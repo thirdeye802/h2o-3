@@ -942,6 +942,10 @@ class Test(object):
         if g_jacoco_include:
             # When using JaCoCo we don't want the test to return an error if a cloud reports as unhealthy
             cmd += ["--forceConnect"]
+        if g_ldap_username:
+            cmd += ['--ldapUsername', g_ldap_username]
+        if g_ldap_password:
+            cmd += ['--ldapPassword', g_ldap_password]
         return cmd
 
     def _javascript_cmd(self, test_name, ip, port):
@@ -2616,7 +2620,8 @@ def main(argv):
                           g_use_cloud, g_use_cloud2, g_use_client, g_config, g_use_ip, g_use_port,
                           g_num_clouds, g_nodes_per_cloud, h2o_jar, g_base_port, g_jvm_xmx, g_jvm_cp,
                           g_output_dir, g_failed_output_dir, g_path_to_tar, g_path_to_whl, g_produce_unit_reports,
-                          testreport_dir, g_r_pkg_ver_chk, g_hadoop_namenode, g_on_hadoop, g_perf, g_test_ssl, g_ldap_config)
+                          testreport_dir, g_r_pkg_ver_chk, g_hadoop_namenode, g_on_hadoop, g_perf, g_test_ssl,
+                          g_ldap_config)
 
     # Build test list.
     if g_exclude_list_file is not None:
